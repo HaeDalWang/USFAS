@@ -27,9 +27,9 @@ def _price_df(pre_close: float, post_close: float, earnings_date: str) -> pd.Dat
 
 def _earnings(date_str: str, actual_eps=1.5, est_eps=1.2,
                actual_rev=100e9, est_rev=95e9) -> list[dict]:
-    return [{"date": date_str, "actualEarningResult": actual_eps,
-              "estimatedEarning": est_eps, "actualRevenue": actual_rev,
-              "estimatedRevenue": est_rev}]
+    return [{"date": date_str, "epsActual": actual_eps,
+              "epsEstimated": est_eps, "revenueActual": actual_rev,
+              "revenueEstimated": est_rev}]
 
 
 def _inst(pct: float = 65.0) -> dict:

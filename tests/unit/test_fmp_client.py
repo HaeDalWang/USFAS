@@ -26,17 +26,19 @@ def test_empty_api_key_raises():
 
 @resp_mock.activate
 def test_get_success_on_first_try(client):
-    resp_mock.add(resp_mock.GET, f"{BASE}/earnings-surprises",
-                  json=[{"symbol": "AAPL", "actualEarningResult": 1.5}], status=200)
+    resp_mock.add(resp_mock.GET, f"{BASE}/earnings",
+                  json=[{"symbol": "AAPL", "epsActual": 1.5, "epsEstimated": 1.2,
+                         "revenueActual": 100e9, "revenueEstimated": 95e9, "date": "2026-05-01"}], status=200)
     data = client.get_earnings_surprises("AAPL")
     assert data[0]["symbol"] == "AAPL"
 
 
 @resp_mock.activate
 def test_get_retries_on_429_then_succeeds(client):
-    resp_mock.add(resp_mock.GET, f"{BASE}/earnings-surprises", status=429)
-    resp_mock.add(resp_mock.GET, f"{BASE}/earnings-surprises",
-                  json=[{"symbol": "AAPL"}], status=200)
+    resp_mock.add(resp_mock.GET, f"{BASE}/earnings", status=429)
+    resp_mock.add(resp_mock.GET, f"{BASE}/earnings",
+                  json=[{"symbol": "AAPL", "epsActual": 1.5, "epsEstimated": 1.2,
+                         "revenueActual": 100e9, "revenueEstimated": 95e9, "date": "2026-05-01"}], status=200)
     with patch("time.sleep"):
         data = client.get_earnings_surprises("AAPL")
     assert data[0]["symbol"] == "AAPL"
@@ -46,7 +48,7 @@ def test_get_retries_on_429_then_succeeds(client):
 @resp_mock.activate
 def test_get_raises_fmp_error_after_max_retries(client):
     for _ in range(3):
-        resp_mock.add(resp_mock.GET, f"{BASE}/earnings-surprises", status=500)
+        resp_mock.add(resp_mock.GET, f"{BASE}/earnings", status=500)
     with patch("time.sleep"):
         with pytest.raises(FMPError):
             client.get_earnings_surprises("AAPL")
@@ -56,8 +58,11 @@ def test_get_raises_fmp_error_after_max_retries(client):
 
 @resp_mock.activate
 def test_get_earnings_surprises_empty_raises(client):
-    resp_mock.add(resp_mock.GET, f"{BASE}/earnings-surprises", json=[], status=200)
-    with pytest.raises(DataNotAvailable, match="어닝"):
+    # 과거 실적 없음 (epsActual이 모두 null인 경우)
+    resp_mock.add(resp_mock.GET, f"{BASE}/earnings",
+                  json=[{"symbol": "AAPL", "epsActual": None, "epsEstimated": 1.2, "date": "2026-07-30"}],
+                  status=200)
+    with pytest.raises(DataNotAvailable, match="과거 어닝"):
         client.get_earnings_surprises("AAPL")
 
 

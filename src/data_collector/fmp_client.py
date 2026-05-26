@@ -51,10 +51,13 @@ class FMPClient:
         raise FMPError(f"FMP API 실패 ({endpoint}): {last_error}")
 
     def get_earnings_surprises(self, symbol: str) -> list[dict]:
-        data = self._get("earnings-surprises", {"symbol": symbol})
-        if not data:
-            raise DataNotAvailable(f"{symbol}: 어닝 서프라이즈 데이터 없음")
-        return data
+        # stable API는 'earnings' 엔드포인트 사용 ('earnings-surprises'는 404)
+        data = self._get("earnings", {"symbol": symbol})
+        # 과거 실적만 (epsActual이 있는 것)
+        past = [e for e in data if e.get("epsActual") is not None]
+        if not past:
+            raise DataNotAvailable(f"{symbol}: 과거 어닝 데이터 없음")
+        return past
 
     def get_price_history(self, symbol: str, days: int = 365) -> pd.DataFrame:
         try:
@@ -81,16 +84,31 @@ class FMPClient:
         return df
 
     def get_institutional_ownership(self, symbol: str) -> dict:
-        data = self._get("institutional-ownership", {"symbol": symbol})
-        if not data:
-            raise DataNotAvailable(f"{symbol}: 기관 소유비율 데이터 없음")
-        return data[0] if isinstance(data, list) else data
+        try:
+            data = self._get("institutional-ownership", {"symbol": symbol})
+            if data:
+                return data[0] if isinstance(data, list) else data
+        except (FMPError, Exception):
+            pass
+        # yfinance fallback (FMP Starter 플랜 없을 때)
+        logger.warning("%s: FMP 기관 소유비율 없음, yfinance fallback", symbol)
+        return self._get_institutional_yfinance(symbol)
+
+    def _get_institutional_yfinance(self, symbol: str) -> dict:
+        ticker = yf.Ticker(symbol)
+        pct = (ticker.info.get("heldPercentInstitutions") or 0) * 100
+        return {"institutionalOwnershipPercentage": round(pct, 2)}
 
     def get_insider_trading(self, symbol: str) -> list[dict]:
-        data = self._get("insider-trading", {"symbol": symbol})
-        if not isinstance(data, list):
-            raise DataNotAvailable(f"{symbol}: 내부자 거래 데이터 없음")
-        return data
+        try:
+            data = self._get("insider-trading", {"symbol": symbol})
+            if not isinstance(data, list):
+                raise DataNotAvailable(f"{symbol}: 내부자 거래 데이터 없음")
+            return data
+        except FMPError as e:
+            # FMP Starter 플랜 필요 — 빈 리스트 반환 (TYPE-2 조건 미충족으로 처리)
+            logger.warning("%s: insider-trading 접근 불가 (FMP Starter 플랜 필요): %s", symbol, e)
+            return []
 
     def get_income_statement(self, symbol: str, period: str = "quarter") -> list[dict]:
         data = self._get("income-statement", {"symbol": symbol, "period": period})

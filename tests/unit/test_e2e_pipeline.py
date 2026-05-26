@@ -103,14 +103,14 @@ def test_e2e_type1_signal_generated(config_file):
     _setup_aws()
 
     # FMP API 모킹
-    resp_mock.add(resp_mock.GET, f"{FMP_BASE}/earnings-surprises",
+    resp_mock.add(resp_mock.GET, f"{FMP_BASE}/earnings",
                   json=[{
                       "date": EARNINGS_DATE,
                       "symbol": "NVDA",
-                      "actualEarningResult": 1.5,
-                      "estimatedEarning": 1.2,
-                      "actualRevenue": 100e9,
-                      "estimatedRevenue": 95e9,
+                      "epsActual": 1.5,
+                      "epsEstimated": 1.2,
+                      "revenueActual": 100e9,
+                      "revenueEstimated": 95e9,
                   }], status=200)
     resp_mock.add(resp_mock.GET, f"{FMP_BASE}/institutional-ownership",
                   json=[{"institutionalOwnershipPercentage": 65.0}], status=200)
@@ -121,7 +121,9 @@ def test_e2e_type1_signal_generated(config_file):
 
     with patch("src.data_collector.handler.get_market_indicators", return_value=_mock_market_indicators()), \
          patch("src.data_collector.fmp_client.FMPClient.get_price_history", return_value=_mock_price_df()), \
-         patch("src.shared.secrets.get_fmp_api_key", return_value="test-key"):
+         patch("src.shared.secrets.get_fmp_api_key", return_value="test-key"), \
+         patch("src.data_collector.handler.get_discord_webhook", return_value="https://test-webhook"), \
+         patch("src.alerting_engine.handler.process_signal"):
         signals = run(config_path=config_file, today=TODAY)
 
     assert len(signals) == 1
@@ -137,10 +139,10 @@ def test_e2e_idempotency_no_duplicate(config_file):
     _setup_aws()
 
     for _ in range(2):
-        resp_mock.add(resp_mock.GET, f"{FMP_BASE}/earnings-surprises",
+        resp_mock.add(resp_mock.GET, f"{FMP_BASE}/earnings",
                       json=[{"date": EARNINGS_DATE, "symbol": "NVDA",
-                             "actualEarningResult": 1.5, "estimatedEarning": 1.2,
-                             "actualRevenue": 100e9, "estimatedRevenue": 95e9}], status=200)
+                             "epsActual": 1.5, "epsEstimated": 1.2,
+                             "revenueActual": 100e9, "revenueEstimated": 95e9}], status=200)
         resp_mock.add(resp_mock.GET, f"{FMP_BASE}/institutional-ownership",
                       json=[{"institutionalOwnershipPercentage": 65.0}], status=200)
         resp_mock.add(resp_mock.GET, f"{FMP_BASE}/insider-trading", json=[], status=200)
@@ -149,7 +151,9 @@ def test_e2e_idempotency_no_duplicate(config_file):
 
     with patch("src.data_collector.handler.get_market_indicators", return_value=_mock_market_indicators()), \
          patch("src.data_collector.fmp_client.FMPClient.get_price_history", return_value=_mock_price_df()), \
-         patch("src.shared.secrets.get_fmp_api_key", return_value="test-key"):
+         patch("src.shared.secrets.get_fmp_api_key", return_value="test-key"), \
+         patch("src.data_collector.handler.get_discord_webhook", return_value="https://test-webhook"), \
+         patch("src.alerting_engine.handler.process_signal"):
         signals_run1 = run(config_path=config_file, today=TODAY)
         signals_run2 = run(config_path=config_file, today=TODAY)
 
@@ -200,10 +204,10 @@ secrets:
     _setup_aws()
 
     # NVDA만 정상 응답
-    resp_mock.add(resp_mock.GET, f"{FMP_BASE}/earnings-surprises",
+    resp_mock.add(resp_mock.GET, f"{FMP_BASE}/earnings",
                   json=[{"date": EARNINGS_DATE, "symbol": "NVDA",
-                         "actualEarningResult": 1.5, "estimatedEarning": 1.2,
-                         "actualRevenue": 100e9, "estimatedRevenue": 95e9}], status=200)
+                         "epsActual": 1.5, "epsEstimated": 1.2,
+                         "revenueActual": 100e9, "revenueEstimated": 95e9}], status=200)
     resp_mock.add(resp_mock.GET, f"{FMP_BASE}/institutional-ownership",
                   json=[{"institutionalOwnershipPercentage": 65.0}], status=200)
     resp_mock.add(resp_mock.GET, f"{FMP_BASE}/insider-trading", json=[], status=200)
@@ -217,7 +221,9 @@ secrets:
 
     with patch("src.data_collector.handler.get_market_indicators", return_value=_mock_market_indicators()), \
          patch("src.data_collector.fmp_client.FMPClient.get_price_history", side_effect=price_side_effect), \
-         patch("src.shared.secrets.get_fmp_api_key", return_value="test-key"):
+         patch("src.shared.secrets.get_fmp_api_key", return_value="test-key"), \
+         patch("src.data_collector.handler.get_discord_webhook", return_value="https://test-webhook"), \
+         patch("src.alerting_engine.handler.process_signal"):
         signals = run(config_path=str(cfg), today=TODAY)
 
     # FAIL_SYMBOL 스킵, NVDA 시그널 생성

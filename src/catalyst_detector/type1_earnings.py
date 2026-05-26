@@ -29,10 +29,11 @@ def check_type1(
     if recent is None:
         return False, {}
 
-    eps_surprise = _calc_surprise(recent.get("actualEarningResult"), recent.get("estimatedEarning"))
+    # FMP stable API 'earnings' 엔드포인트 필드명 사용
+    eps_surprise = _calc_surprise(recent.get("epsActual"), recent.get("epsEstimated"))
     conditions["eps_surprise"] = eps_surprise is not None and eps_surprise > config.eps_surprise_min_pct
 
-    rev_surprise = _calc_surprise(recent.get("actualRevenue"), recent.get("estimatedRevenue"))
+    rev_surprise = _calc_surprise(recent.get("revenueActual"), recent.get("revenueEstimated"))
     conditions["revenue_surprise"] = rev_surprise is not None and rev_surprise > config.revenue_surprise_min_pct
 
     direction = guidance_direction or "maintain"

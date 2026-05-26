@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+from src.alerting_engine.handler import process_signal
 from src.catalyst_detector.kill_switch import check_kill_switch
 from src.catalyst_detector.type1_earnings import check_type1
 from src.catalyst_detector.type2_insider import check_type2
@@ -11,7 +12,7 @@ from src.shared.config import AppConfig, load_config
 from src.shared.dynamo_client import ProcessedEventsTable
 from src.shared.exceptions import DataNotAvailable, FMPFallbackError
 from src.shared.models import AlertSignal, KillSwitchStatus
-from src.shared.secrets import get_fmp_api_key
+from src.shared.secrets import get_discord_webhook, get_fmp_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 def run(config_path: str | None = None, today: date | None = None) -> list[AlertSignal]:
     config = load_config(config_path)
     api_key = get_fmp_api_key(config.secrets.fmp_api_key)
+    webhook_url = get_discord_webhook(config.secrets.discord_webhook)
     fmp = FMPClient(api_key=api_key)
     events = ProcessedEventsTable()
 
@@ -36,6 +38,10 @@ def run(config_path: str | None = None, today: date | None = None) -> list[Alert
         signals.extend(result)
 
     logger.info("스캔 완료: %d개 종목, %d개 시그널", len(config.universe.symbols), len(signals))
+
+    for signal in signals:
+        process_signal(signal, config, fmp, webhook_url)
+
     return signals
 
 
