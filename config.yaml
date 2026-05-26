@@ -1,0 +1,50 @@
+universe:
+  symbols:
+    - AAPL
+    - MSFT
+    - NVDA
+    - META
+    - GOOGL
+    - AMZN
+    - JPM
+    - TSLA
+    - AMD
+    - NFLX
+
+providers:
+  primary: fmp
+  fallback: yfinance
+
+kill_switch:
+  vix_max: 28.0
+  us10y_daily_bp_max: 15.0
+  dxy_use_bollinger: true
+  dxy_bollinger_period: 20
+
+type1_earnings:
+  eps_surprise_min_pct: 10.0
+  revenue_surprise_min_pct: 3.0
+  post_earnings_move_max_pct: 5.0
+  institutional_ownership_min: 50.0
+  scan_days_after_earnings: 2
+
+type2_insider:
+  min_executives: 2
+  min_total_value_usd: 500000
+  lookback_days: 30
+  price_drawdown_min_pct: 25.0
+  require_profitable: true
+
+stop_loss:
+  type1_pct: 8.0
+  type1_exit_days_before_earnings: 2
+  type2_pct: 12.0
+  type2_max_hold_days: 90
+
+report:
+  s3_bucket: usfas-reports
+  presigned_url_expiry_days: 7
+
+secrets:
+  fmp_api_key: arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:usfas/fmp-api-key
+  discord_webhook: arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:usfas/discord-webhook

@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: USFAS — US Fundamental Alert System
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod, stg, dev]
+
+Globals:
+  Function:
+    Timeout: 600
+    MemorySize: 1024
+
+Resources:
+
+  # ── DynamoDB ──────────────────────────────────────────────────────────────
+
+  ProcessedEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: usfas-processed-events
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: usfas
+
+  MarketDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: usfas-market-data
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: symbol
+          AttributeType: S
+        - AttributeName: collected_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: symbol
+          KeyType: HASH
+        - AttributeName: collected_at
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: usfas
+
+  # ── S3 ────────────────────────────────────────────────────────────────────
+
+  ReportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: usfas-reports
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldReports
+            Status: Enabled
+            ExpirationInDays: 30
+      Tags:
+        - Key: Project
+          Value: usfas
+
+  # ── IAM ───────────────────────────────────────────────────────────────────
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: USFASTaskPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:usfas/*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt ProcessedEventsTable.Arn
+                  - !GetAtt MarketDataTable.Arn
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub "${ReportsBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ── ECS ───────────────────────────────────────────────────────────────────
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: usfas-cluster
+      Tags:
+        - Key: Project
+          Value: usfas
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: usfas-scanner
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: usfas
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/usfas:latest"
+          Essential: true
+          Environment:
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/usfas
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: usfas
+
+  # ── CloudWatch Logs ───────────────────────────────────────────────────────
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/usfas
+      RetentionInDays: 90
+
+  # ── EventBridge ───────────────────────────────────────────────────────────
+
+  # TYPE-2 스캔: 매일 22:30 KST (13:30 UTC)
+  Type2ScanSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: usfas-type2-daily
+      ScheduleExpression: "cron(30 13 * * ? *)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: !GetAtt ECSCluster.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinition
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets:
+                - !Ref SubnetId
+        Input: '{"scan_type": "TYPE2"}'
+
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RunECSTask
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Ref TaskDefinition
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt TaskExecutionRole.Arn
+                  - !GetAtt TaskRole.Arn
+
+Parameters:
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet for ECS Fargate tasks
+
+Outputs:
+  ProcessedEventsTableName:
+    Value: !Ref ProcessedEventsTable
+  MarketDataTableName:
+    Value: !Ref MarketDataTable
+  ReportsBucketName:
+    Value: !Ref ReportsBucket
+  ECSClusterName:
+    Value: !Ref ECSCluster

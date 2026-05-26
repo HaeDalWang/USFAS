@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>[TYPE-2] {{ signal.symbol }} — 내부자 클러스터 매수</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 24px; background: #f8f9fa; color: #212529; }
+  .header { background: #0d2137; color: white; padding: 20px 24px; border-radius: 8px; margin-bottom: 20px; }
+  .header h1 { margin: 0 0 4px; font-size: 1.4rem; }
+  .header .subtitle { opacity: 0.7; font-size: 0.9rem; }
+  .kill-switch-banner { background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .kill-switch-banner h3 { margin: 0 0 8px; color: #856404; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .card h2 { margin: 0 0 16px; font-size: 1.1rem; color: #495057; border-bottom: 1px solid #dee2e6; padding-bottom: 8px; }
+  .conditions { list-style: none; padding: 0; margin: 0; }
+  .conditions li { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f3f5; }
+  .conditions li:last-child { border-bottom: none; }
+  .badge-ok { background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem; }
+  .badge-fail { background: #f8d7da; color: #721c24; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem; }
+  .stop-loss { background: #fff5f5; border-left: 4px solid #e74c3c; padding: 16px; border-radius: 0 8px 8px 0; }
+  .stop-loss .price { font-size: 1.5rem; font-weight: bold; color: #e74c3c; }
+  .insider-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .insider-table th { background: #f1f3f5; padding: 8px; text-align: left; }
+  .insider-table td { padding: 8px; border-bottom: 1px solid #dee2e6; }
+  .chart-img { width: 100%; border-radius: 4px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .disclaimer { font-size: 0.8rem; color: #6c757d; text-align: center; margin-top: 24px; }
+</style>
+</head>
+<body>
+
+{% if signal.kill_switch_status.triggered %}
+<div class="kill-switch-banner">
+  <h3>⚠️ Kill-Switch 작동 중! 매우 주의하세요</h3>
+  <p style="margin:0">{{ signal.kill_switch_status.reason }}</p>
+</div>
+{% endif %}
+
+<div class="header">
+  <h1>🔍 [TYPE-2] 내부자 클러스터 매수 — {{ signal.symbol }}</h1>
+  <div class="subtitle">{{ signal.company_name }}{% if signal.sector %} | {{ signal.sector }}{% endif %}</div>
+</div>
+
+<div class="card">
+  <h2>✅ 조건 체크</h2>
+  <ul class="conditions">
+    {% for key, met in signal.conditions_met.items() %}
+    <li>
+      <span>{{ {
+        'min_executives': 'C레벨 임원 수 (2인 이상)',
+        'min_total_value': '총 매수금액 ($500K 이상)',
+        'price_drawdown': '52주 고점 대비 -25% 이상',
+        'eps_profitable': '최근 분기 EPS 흑자'
+      }.get(key, key) }}</span>
+      <span class="{{ 'badge-ok' if met else 'badge-fail' }}">{{ '✅' if met else '❌' }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% if insider_trades %}
+<div class="card">
+  <h2>👤 내부자 매수 현황 (공개시장 매수만)</h2>
+  <table class="insider-table">
+    <thead>
+      <tr><th>날짜</th><th>직책</th><th>매수금액</th></tr>
+    </thead>
+    <tbody>
+      {% for t in insider_trades if t.get('transactionType') == 'P' %}
+      <tr>
+        <td>{{ t.get('filingDate', '')[:10] }}</td>
+        <td>{{ t.get('officerTitle', '') }}</td>
+        <td>${{ "%.0f"|format((t.get('securitiesTransacted', 0) or 0) * (t.get('price', 0) or 0) / 1000) }}K</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card stop-loss">
+  <h2>📉 손절 가이드</h2>
+  <div>현재가: <strong>${{ "%.2f"|format(signal.current_price) }}</strong></div>
+  <div>손절선 (-{{ "%.0f"|format((signal.current_price - signal.stop_loss_price) / signal.current_price * 100) }}%):
+    <span class="price">${{ "%.2f"|format(signal.stop_loss_price) }}</span>
+  </div>
+  {% if signal.exit_date %}
+  <div>최대 보유: <strong>{{ signal.exit_date.strftime('%Y-%m-%d') }}</strong> (90일, 수익/손실 무관 청산)</div>
+  {% endif %}
+</div>
+
+{% if charts.insider_timeline %}
+<div class="card">
+  <h2>📅 내부자 거래 타임라인</h2>
+  <img class="chart-img" src="data:image/png;base64,{{ charts.insider_timeline }}" alt="내부자 거래 타임라인">
+</div>
+{% endif %}
+
+<div class="grid-2">
+  {% if charts.price_1y %}
+  <div class="card">
+    <h2>📈 주가 (1년)</h2>
+    <img class="chart-img" src="data:image/png;base64,{{ charts.price_1y }}" alt="주가 차트">
+  </div>
+  {% endif %}
+  {% if charts.eps_quarterly %}
+  <div class="card">
+    <h2>💰 최근 4분기 EPS</h2>
+    <img class="chart-img" src="data:image/png;base64,{{ charts.eps_quarterly }}" alt="EPS 차트">
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🌡️ Kill-Switch 현황</h2>
+  <div>VIX: <strong>{{ "%.1f"|format(signal.kill_switch_status.vix or 0) }}</strong>
+    {{ '🔴' if (signal.kill_switch_status.vix or 0) > 28 else '✅' }}
+  </div>
+  {% if signal.kill_switch_status.us10y_change_bp %}
+  <div>US 10Y 변동: <strong>{{ "%.1f"|format(signal.kill_switch_status.us10y_change_bp) }}bp</strong>
+    {{ '🔴' if signal.kill_switch_status.us10y_change_bp > 15 else '✅' }}
+  </div>
+  {% endif %}
+</div>
+
+<p class="disclaimer">⚠️ 투자 권유 아님 | 이 리포트는 정보 제공 목적으로만 사용됩니다 | 손절 필수</p>
+</body>
+</html>
