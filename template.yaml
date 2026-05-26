@@ -196,7 +196,7 @@ Resources:
               AssignPublicIp: ENABLED
               Subnets:
                 - !Ref SubnetId
-        Input: '{"scan_type": "TYPE2"}'
+        Input: '{"containerOverrides": []}'
 
   SchedulerRole:
     Type: AWS::IAM::Role
