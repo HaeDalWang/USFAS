@@ -46,5 +46,5 @@ report:
   presigned_url_expiry_days: 7
 
 secrets:
-  fmp_api_key: arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:usfas/fmp-api-key
-  discord_webhook: arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:usfas/discord-webhook
+  fmp_api_key: arn:aws:secretsmanager:ap-northeast-2:863422182520:secret:usfas/fmp-api-key
+  discord_webhook: arn:aws:secretsmanager:ap-northeast-2:863422182520:secret:usfas/discord-webhook

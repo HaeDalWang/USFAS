@@ -7,6 +7,9 @@ Parameters:
     Type: String
     Default: prod
     AllowedValues: [prod, stg, dev]
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet for ECS Fargate tasks
 
 Globals:
   Function:
@@ -218,11 +221,6 @@ Resources:
                 Resource:
                   - !GetAtt TaskExecutionRole.Arn
                   - !GetAtt TaskRole.Arn
-
-Parameters:
-  SubnetId:
-    Type: AWS::EC2::Subnet::Id
-    Description: Subnet for ECS Fargate tasks
 
 Outputs:
   ProcessedEventsTableName:

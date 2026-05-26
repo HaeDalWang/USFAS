@@ -1,0 +1,12 @@
+version = 0.1
+
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name          = "usfas"
+region              = "ap-northeast-2"
+capabilities        = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+resolve_s3          = true
+parameter_overrides = "Environment=prod SubnetId=subnet-002b45361e56f3540"
+confirm_changeset   = true
+fail_on_empty_changeset = false
